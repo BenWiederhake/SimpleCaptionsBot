@@ -25,7 +25,8 @@ WIDTH_MAX = 1800
 HEIGHT_MIN = 450
 HEIGHT_MAX = 1900
 
-MARGIN = 1
+MARGIN = 10
+STROKE_WIDTH = 5
 
 BASIC_FONT_100 = ImageFont.truetype(font='impact.ttf', size=100)
 # SHA256 should be 00f1fc230ac99f9b97ba1a7c214eb5b909a78660cb3826fca7d64c3af5a14848
@@ -132,18 +133,33 @@ def compute_avg_rgb(img, y):
 
 
 def try_render(multiline_text, final_width):
-    return None, 'NOT IMPLEMENTED'  # FIXME
-    #fontsize = guess_fontsize(caption_request.top_text, photo.width - 2 * MARGIN)
-    #if 6 <= fontsize <= 100:
-    #    pass
-    #else:
-    #    return None, f'Sorry, but that is too much text in the top, requiring a too tiny font ({fontsize} pt). Try using less text, or more linebreaks.'
-    #scaled_font = BASIC_FONT_100.font_variant(size=top_fontsize)
-    # bottom_fontsize = guess_fontsize(caption_request.bottom_text, photo.width - 2 * MARGIN)
+    full_size = BASIC_FONT_100.getsize_multiline(multiline_text, stroke_width=STROKE_WIDTH)
+    if full_size[0] > WIDTH_MAX or 2 * full_size[1] > HEIGHT_MAX:
+        return None, f'The text would take up {full_size[0]}×{full_size[1]} pixels in the intermediary buffer, but I will only allocate {WIDTH_MAX}×{HEIGHT_MAX // 2} pixels for you. Try inserting more linebreaks or shortening the text, as appropriate.'
+
+    if full_size[0] <= final_width - 2 * MARGIN:
+        # We don't want to make the text even bigger than 100 points, so pretend that it'll take up the full width and don't scale it up later.
+        full_size = (final_width - 2 * MARGIN, full_size[1])
+
+    raw_img = Image.new('RGBA', full_size, color=(0, 0, 0, 0))
+    draw = ImageDraw.Draw(raw_img)
+    draw.multiline_text((full_size[0] // 2, 0), multiline_text, font=BASIC_FONT_100, fill=(255, 255, 255, 255), stroke_width=STROKE_WIDTH, stroke_fill=(0, 0, 0, 255), anchor='ma')
+    del draw
+
+    assert full_size[0] >= final_width - 2 * MARGIN
+    if full_size[0] == final_width - 2 * MARGIN:
+        result_img = raw_img
+    else:
+        new_size = (final_width - 2 * MARGIN, round(full_size[1] * (final_width - 2 * MARGIN)/full_size[0]))
+        logger.info(f'Scaling {full_size} down to {new_size}.')
+        result_img = raw_img.resize(new_size)
+
+    return result_img, None
 
 
 def try_compose(text_img, onto_img, y_offset):
-    onto_img.alpha_composite(text_img, (0, y_offset))
+    logger.info(f'Composing text {text_img.size}@{text_img.mode} on top of {onto_img.size}@{onto_img.mode}.')
+    onto_img.alpha_composite(text_img, (MARGIN, y_offset))
 
 
 def make_img_out(img_in, caption_request):
@@ -154,7 +170,7 @@ def make_img_out(img_in, caption_request):
     if len(caption_request.top_text) > 1000 or len(caption_request.bottom_text) > 1000:
         return None, f'Sorry, but that is too much text. try to use at most 1000 characters in the top and bottom, respectively.'
 
-    img_out = Image.new('RGB', (img_in.width, new_height))
+    img_out = Image.new('RGBA', (img_in.width, new_height), (0, 0, 0, 255))
 
     # Begin with the basic meme image:
     img_out.paste(img_in, (0, caption_request.top_padding))
@@ -174,14 +190,14 @@ def make_img_out(img_in, caption_request):
         text_img, err_msg = try_render(caption_request.top_text, img_out.width)
         if err_msg is not None:
             return None, f'There is a problem with the top text: {err_msg}'
-        try_compose(text_img, img_out, 0)
+        try_compose(text_img, img_out, MARGIN)
     if caption_request.bottom_text:
         text_img, err_msg = try_render(caption_request.bottom_text, img_out.width)
         if err_msg is not None:
             return None, f'There is a problem with the bottom text: {err_msg}'
-        try_compose(text_img, img_out, img_out.height - text_img.height)
+        try_compose(text_img, img_out, img_out.height - text_img.height - MARGIN)
 
-    return img, None
+    return img_out.convert('RGB'), None
 
 
 def cmd_caption(update: Update, _context: CallbackContext) -> None:
