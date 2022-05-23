@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import io
 import logging
 import os
+from PIL import Image, ImageDraw, ImageFont
 import secret  # See secret_template.py
 import secrets
 from telegram import Chat, ChatMember, ChatMemberUpdated, ParseMode, Update
@@ -22,6 +24,11 @@ WIDTH_MIN = 400
 WIDTH_MAX = 1800
 HEIGHT_MIN = 450
 HEIGHT_MAX = 1900
+
+MARGIN = 1
+
+BASIC_FONT_100 = ImageFont.truetype(font='impact.ttf', size=100)
+# SHA256 should be 00f1fc230ac99f9b97ba1a7c214eb5b909a78660cb3826fca7d64c3af5a14848
 
 
 #def cmd_trap(update: Update, _context: CallbackContext) -> None:
@@ -113,6 +120,70 @@ def parse_caption(text):
     return CaptionRequest('\n'.join(top_part), '\n'.join(bottom_part), top_padding, bottom_padding)
 
 
+def rgb_add(rgb1, rgb2):
+    return tuple(c1 + c2 for c1, c2 in zip(rgb1, rgb2))
+
+
+def compute_avg_rgb(img, y):
+    akku = (0, 0, 0)
+    for x in range(img.width):
+        akku = rgb_add(akku, img.getpixel((x, y)))
+    return tuple(round(c / img.width) for c in rgb)
+
+
+def try_render(multiline_text, final_width):
+    return None, 'NOT IMPLEMENTED'  # FIXME
+    #fontsize = guess_fontsize(caption_request.top_text, photo.width - 2 * MARGIN)
+    #if 6 <= fontsize <= 100:
+    #    pass
+    #else:
+    #    return None, f'Sorry, but that is too much text in the top, requiring a too tiny font ({fontsize} pt). Try using less text, or more linebreaks.'
+    #scaled_font = BASIC_FONT_100.font_variant(size=top_fontsize)
+    # bottom_fontsize = guess_fontsize(caption_request.bottom_text, photo.width - 2 * MARGIN)
+
+
+def try_compose(text_img, onto_img, y_offset):
+    onto_img.alpha_composite(text_img, (0, y_offset))
+
+
+def make_img_out(img_in, caption_request):
+    new_height = caption_request.top_padding + img_in.height + caption_request.bottom_padding
+    if new_height > HEIGHT_MAX:
+        return None, f'Sorry, but the resulting meme would be too large ({new_height} pixels; the maximum is {HEIGHT_MAX}).'
+
+    if len(caption_request.top_text) > 1000 or len(caption_request.bottom_text) > 1000:
+        return None, f'Sorry, but that is too much text. try to use at most 1000 characters in the top and bottom, respectively.'
+
+    img_out = Image.new('RGB', (img_in.width, new_height))
+
+    # Begin with the basic meme image:
+    img_out.paste(img_in, (0, caption_request.top_padding))
+
+    # Fill in the background:
+    if caption_request.top_padding != 0:
+        avg_rgb = compute_avg_rgb(img_in, 0)
+        draw = ImageDraw.Draw(img_out)
+        draw.rectangle([0, 0, img_out.width - 1, caption_request.top_padding - 1], avg_rgb)
+    if caption_request.bottom_padding != 0:
+        avg_rgb = compute_avg_rgb(img_in, img_in.height - 1)
+        draw = ImageDraw.Draw(img_out)
+        draw.rectangle([0, caption_request.top_padding + img_in.height, img_out.width - 1, img_out.height - 1], avg_rgb)
+
+    # Render the text:
+    if caption_request.top_text:
+        text_img, err_msg = try_render(caption_request.top_text, img_out.width)
+        if err_msg is not None:
+            return None, f'There is a problem with the top text: {err_msg}'
+        try_compose(text_img, img_out, 0)
+    if caption_request.bottom_text:
+        text_img, err_msg = try_render(caption_request.bottom_text, img_out.width)
+        if err_msg is not None:
+            return None, f'There is a problem with the bottom text: {err_msg}'
+        try_compose(text_img, img_out, img_out.height - text_img.height)
+
+    return img, None
+
+
 def cmd_caption(update: Update, _context: CallbackContext) -> None:
     if len(update.message.photo) == 0:
         update.message.reply_text(
@@ -136,17 +207,21 @@ def cmd_caption(update: Update, _context: CallbackContext) -> None:
 
     caption_request = parse_caption(update.message.caption)
 
-    update.message.reply_text(
-        f'Got {len(photo_data)} bytes as meme, got {caption_request} as caption request. Not implemented yet.'
-    )
-    return
+    img_out, error_msg = make_img_out(Image.open(io.BytesIO(photo_data)).convert('RGB'), caption_request)
+    if error_msg is not None:
+        update.message.reply_text(error_msg)
+        return
+    assert img_out is not None
 
-    update.message.reply_text(
-        'Awesome! Vielleicht werde ich das bald verwenden. Sorry, es wird kein Feedback darüber geben, das war mir zu kompliziert zu implementieren.'
-    )
+    filename = f'generated/{time.time_ns()}_{update.effective_user.id}_{secrets.token_hex(8)}.png'
+    logger.info(f'Writing meme by @{update.effective_user.username or "???"} to {filename}')
+    img_out.save(filename)
 
-    filename = f'generated/{time.time_ns()}_{update.effective_user.id}_{secrets.token_hex(8)}.jpg'
-    BOT.send_photo(secret.OWNER_ID, photo_file.file_id, caption=f'New meme from @{update.effective_user.username}! Click /accept_{hexname} to accept, or /reject_{hexname} to reject.')
+    with open(filename, 'rb') as fp:
+        msg_out = update.message.reply_photo(fp)
+
+    BOT.send_photo(secret.OWNER_ID, msg_out.photo[-1], caption=f'From @{update.effective_user.username or "???"}, saved at {filename}.')
+    logger.info('Complete success!')
 
 
 def run():
