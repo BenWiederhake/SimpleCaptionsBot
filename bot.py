@@ -57,6 +57,12 @@ def cmd_photo(update: Update, _context: CallbackContext) -> None:
     )
 
 
+def cmd_caption_raw(update: Update, _context: CallbackContext) -> None:
+    update.effective_message.reply_text(
+        f'Hmm, only the command.'
+    )
+
+
 class CaptionRequest:
     def __init__(self, top_text, bottom_text, top_padding, bottom_padding):
         self.top_text = top_text
@@ -83,8 +89,11 @@ def try_get_padding(line):
 
 def parse_caption(text):
     # Remove "@TheBot" mention
+    text = text.strip()
+    if text.startswith(f'/caption'):
+        text = text[len(f'/caption'):].strip()
     if text.startswith(f'@{secret.BOT_NAME}'):
-        text = text[len(f'@{secret.BOT_NAME}'):]
+        text = text[len(f'@{secret.BOT_NAME}'):].strip()
 
     parts = text.split('\n\n', 1)
     assert 1 <= len(parts) <= 2, f'len(parts) == {len(parts)}?! Request was {text}'
@@ -253,6 +262,7 @@ def run():
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(CommandHandler('start', cmd_start))
+    dispatcher.add_handler(CommandHandler('caption', cmd_caption_raw))
 
     dispatcher.add_handler(MessageHandler(Filters.caption, cmd_caption))
     dispatcher.add_handler(MessageHandler(Filters.photo, cmd_photo))

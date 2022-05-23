@@ -31,6 +31,8 @@ class CaptionTests(unittest.TestCase):
             (f'@{secret.BOT_NAME} Henlo\n\nWordl', 'Henlo', 'Wordl', 0, 0),
             (f'50\nHenlo\n\nWordl\n30', 'Henlo', 'Wordl', 50, 30),
             (f'50\nHenlo\n\nWordl @{secret.BOT_NAME}\n30', 'Henlo', f'Wordl @{secret.BOT_NAME}', 50, 30),
+            (f'/caption\nCool!\n\nBut why?!', 'Cool!', 'But why?!', 0, 0),
+            (f'/caption@{secret.BOT_NAME}\nCool!\n\nBut why?!', 'Cool!', 'But why?!', 0, 0),
             (f'@{secret.BOT_NAME}\nCool!\n\nBut why?!', 'Cool!', 'But why?!', 0, 0),
             (f'@{secret.BOT_NAME} @{secret.BOT_NAME}\n\nBest bot evar', f'@{secret.BOT_NAME}', 'Best bot evar', 0, 0),
             (f'@{secret.BOT_NAME}\n@{secret.BOT_NAME}\n\nBest bot evar', f'@{secret.BOT_NAME}', 'Best bot evar', 0, 0),

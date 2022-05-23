@@ -36,7 +36,7 @@ That should be it.
 
 ## TODOs
 
-Everything
+Improve the Telegram usage, see how it behaves in real life, check whether it interacts nicely with `@gif`.
 
 ## NOTDOs
 
