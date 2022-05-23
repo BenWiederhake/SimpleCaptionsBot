@@ -50,18 +50,67 @@ def cmd_photo(update: Update, _context: CallbackContext) -> None:
 
 
 class CaptionRequest:
-    def __init__(self, top_text, bottom_text, top_padding=0, bottom_padding=0):
+    def __init__(self, top_text, bottom_text, top_padding, bottom_padding):
         self.top_text = top_text
         self.bottom_text = bottom_text
-        self.top_padding = 0
-        self.bottom_padding = 0
+        self.top_padding = top_padding
+        self.bottom_padding = bottom_padding
 
     def __repr__(self):
         return str(self.__dict__)
 
 
+def clean_part(part):
+    return list(filter(lambda x: x, (line.strip() for line in part)))
+
+
+def try_get_padding(line):
+    try:
+        padding = int(line, 10)
+    except:
+        return None
+    else:
+        return padding
+
+
 def parse_caption(text):
-    return CaptionRequest('asdf', 'qwer')
+    # Remove "@TheBot" mention
+    if text.startswith(f'@{secret.BOT_NAME}'):
+        text = text[len(f'@{secret.BOT_NAME}'):]
+
+    parts = text.split('\n\n', 1)
+    assert 1 <= len(parts) <= 2, f'len(parts) == {len(parts)}?! Request was {text}'
+
+    if len(parts) == 1:
+        top_part = ''
+        bottom_part = parts[0]
+    else:
+        top_part, bottom_part = parts
+
+    top_part = top_part.splitlines()
+    bottom_part = bottom_part.splitlines()
+
+    # Remove superfluous whitespace
+    top_part = clean_part(top_part)
+    bottom_part = clean_part(bottom_part)
+
+    # Detect padding pixel counts
+    top_padding = try_get_padding(top_part[0]) if top_part else None
+    if top_padding is None:
+        top_padding = 0
+    else:
+        top_part = top_part[1:]
+    bottom_padding = try_get_padding(bottom_part[-1]) if bottom_part else None
+    if bottom_padding is None:
+        bottom_padding = 0
+    else:
+        bottom_part = bottom_part[:-1]
+
+    # Remove superfluous whitespace (actually only possible for the bottom part)
+    top_part = clean_part(top_part)
+    bottom_part = clean_part(bottom_part)
+
+    return CaptionRequest('\n'.join(top_part), '\n'.join(bottom_part), top_padding, bottom_padding)
 
 
 def cmd_caption(update: Update, _context: CallbackContext) -> None:
