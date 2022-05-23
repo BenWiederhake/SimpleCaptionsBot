@@ -1,0 +1,3 @@
+TOKEN = '1234567891:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234-abcd'
+OWNER = 'your_username'  # Without the '@'
+OWNER_ID = '123456789'
